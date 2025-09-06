@@ -92,9 +92,22 @@ export default async function handler(req, res) {
   }
 
   try {
+    // Check environment variables
+    if (!process.env.MONGODB_URI) {
+      return res.status(500).json({ message: 'MONGODB_URI environment variable is not set' });
+    }
+    
+    if (!process.env.JWT_SECRET) {
+      return res.status(500).json({ message: 'JWT_SECRET environment variable is not set' });
+    }
+
     await connectDB();
 
     const { name, email, password } = req.body;
+
+    if (!name || !email || !password) {
+      return res.status(400).json({ message: 'Name, email and password are required' });
+    }
 
     // Check if user already exists
     const existingUser = await User.findOne({ email });
@@ -102,8 +115,17 @@ export default async function handler(req, res) {
       return res.status(400).json({ message: 'User already exists' });
     }
 
-    // Create new user
-    const user = new User({ name, email, password });
+    // Hash password
+    const salt = await bcrypt.genSalt(10);
+    const hashedPassword = await bcrypt.hash(password, salt);
+
+    // Create user
+    const user = new User({
+      name,
+      email,
+      password: hashedPassword
+    });
+
     await user.save();
 
     // Generate token
@@ -119,6 +141,11 @@ export default async function handler(req, res) {
       }
     });
   } catch (error) {
-    res.status(500).json({ message: 'Server error', error: error.message });
+    console.error('Register error:', error);
+    res.status(500).json({ 
+      message: 'Server error', 
+      error: error.message,
+      stack: process.env.NODE_ENV === 'development' ? error.stack : undefined
+    });
   }
 }
